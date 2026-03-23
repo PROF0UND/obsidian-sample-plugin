@@ -32,6 +32,7 @@ export class SpriteEngine {
     private timer?: number;
     private spriteUrl: string;
     private flipped = false;
+    private lastAnimationName?: string;
     private frameSize = 16;
 
     constructor(el: HTMLElement, def: SpriteDefinition, resourcePath: (file: string) => string) {
@@ -61,6 +62,7 @@ export class SpriteEngine {
         const anim = Array.isArray(animDef) ? animDef[0] : animDef;
         if (!anim) return;
         this.stop();
+        this.lastAnimationName = name;
         this.current = anim;
         this.frameIndex = 0;
         this.setFlip(Boolean(anim.options.flip));
@@ -85,6 +87,15 @@ export class SpriteEngine {
     stop() {
         if (this.timer) window.clearInterval(this.timer);
         this.timer = undefined;
+    }
+
+    getAnimationDurationMs(name: string) {
+        const animDef = this.def.animations[name];
+        if (!animDef) return null;
+        const anim = Array.isArray(animDef) ? animDef[0] : animDef;
+        if (!anim) return null;
+        if (!anim.frames.length || anim.fps <= 0) return null;
+        return Math.ceil((anim.frames.length / anim.fps) * 1000);
     }
 
     private setFlip(flip: boolean) {

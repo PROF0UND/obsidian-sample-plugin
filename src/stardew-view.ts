@@ -79,6 +79,7 @@ export class StardewView extends ItemView {
         state: 'idle' | 'walking';
         direction: 'down' | 'left' | 'right' | 'up';
         idleTimer?: number;
+        actionTimer?: number;
         walkRaf?: number;
     }> = [];
 
@@ -140,15 +141,33 @@ export class StardewView extends ItemView {
     }
 
     startAnimations() {
-        this.animals.forEach(animal => this.startIdle(animal));
+        this.animals.forEach(animal => this.startRest(animal));
     }
 
-    private startIdle(animalState: typeof this.animals[number]) {
+    private startRest(animalState: typeof this.animals[number]) {
         if (this.animationsPaused) return;
         animalState.state = 'idle';
         animalState.engine.play("idle");
-        const idleTime = 5000 + Math.random() * 5000; // 5-10s
-        animalState.idleTimer = window.setTimeout(() => this.startWalk(animalState), idleTime);
+        const idleTime = Math.random() * 5000;
+        animalState.idleTimer = window.setTimeout(() => this.startAction(animalState), idleTime);
+    }
+
+    private startAction(animalState: typeof this.animals[number]) {
+        if (this.animationsPaused) return;
+        const doSleep = Math.random() < 0.3;
+        if (doSleep) {
+            this.startSleep(animalState);
+        } else {
+            this.startWalk(animalState);
+        }
+    }
+
+    private startSleep(animalState: typeof this.animals[number]) {
+        if (this.animationsPaused) return;
+        animalState.state = 'idle';
+        animalState.engine.play("sleep");
+        const sleepDuration = 3500 + Math.random() * 6500;
+        animalState.actionTimer = window.setTimeout(() => this.startRest(animalState), sleepDuration);
     }
 
     private startWalk(animalState: typeof this.animals[number]) {
@@ -245,11 +264,11 @@ export class StardewView extends ItemView {
             return;
         }
 
-        const speed = 40; // pixels per second
+        const speed = 30; // pixels per second
 
         const walkSegment = (index: number) => {
             if (index >= segments.length) {
-                this.startIdle(animalState);
+                this.startRest(animalState);
                 return;
             }
 
@@ -296,9 +315,11 @@ export class StardewView extends ItemView {
         this.animationsPaused = true;
         this.animals.forEach(animal => {
             if (animal.idleTimer) window.clearTimeout(animal.idleTimer);
+            if (animal.actionTimer) window.clearTimeout(animal.actionTimer);
             if (animal.walkRaf) cancelAnimationFrame(animal.walkRaf);
             animal.engine.stop();
             animal.idleTimer = undefined;
+            animal.actionTimer = undefined;
             animal.walkRaf = undefined;
         });
     }
@@ -306,7 +327,7 @@ export class StardewView extends ItemView {
     private resumeAnimations() {
         if (!this.animationsPaused) return;
         this.animationsPaused = false;
-        this.animals.forEach(animal => this.startIdle(animal));
+        this.animals.forEach(animal => this.startRest(animal));
     }
 
     private getMoveAnimName(direction: 'down' | 'left' | 'right' | 'up') {
