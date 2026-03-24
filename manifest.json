@@ -1,11 +1,11 @@
 {
 	"id": "stardew-pet-farm",
-	"name": "Stardew Pets for Obsidian",
+	"name": "Stardew Pets Farm",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Creates a nice space for your stardew valley pets.",
 	"author": "PROF0UND",
 	"authorUrl": "https://github.com/PROF0UND",
-	"fundingUrl": "https://github.com/PROF0UND/Stardew-Pets-for-Obsidian",
+	"fundingUrl": "https://github.com/PROF0UND/stardew-pet-farm",
 	"isDesktopOnly": true
 }
