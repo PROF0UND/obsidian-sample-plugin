@@ -8,7 +8,7 @@ Inspired by [BOTPanzer](https://github.com/BOTPanzer/Stardew-Pets). Thank you so
 
 ## Open The View
 
-1. Open the Command Palette (CRTL + P).
+1. Open the Command Palette (CTRL + P).
 2. Run `Stardew Pets for Obsidian: Open Stardew Animals`.
 3. Enjoy!
 
