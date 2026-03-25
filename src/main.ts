@@ -27,11 +27,11 @@ export default class StardewPetsPlugin extends Plugin {
         // Command to open Stardew view
         this.addCommand({
             id: 'open-stardew-view',
-            name: 'Open Stardew animals',
-            callback: () => {
+            name: 'Open stardew farm',
+            callback: async () => {
                 const leaf = this.app.workspace.getLeftLeaf(true);
-                leaf.setViewState({ type: VIEW_TYPE_STARDEW, active: true });
-                this.app.workspace.revealLeaf(leaf);
+                await leaf.setViewState({ type: VIEW_TYPE_STARDEW, active: true });
+                await this.app.workspace.revealLeaf(leaf);
             }
 
         });
@@ -42,9 +42,11 @@ export default class StardewPetsPlugin extends Plugin {
         });
     }
 
-    async onunload() {
+    onunload() {
         // Save game
-        await this.saveGame();
+        void this.saveGame().catch((err) => {
+            console.error('Failed to save game on unload', err);
+        });
     }
 
     async loadGame() {

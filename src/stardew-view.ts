@@ -16,7 +16,7 @@ export class StardewView extends ItemView {
     }
 
     getDisplayText(): string {
-        return "Stardew Animals";
+        return "Stardew pets";
     }
 
     getIcon(): string {
@@ -28,7 +28,7 @@ export class StardewView extends ItemView {
         container.empty();
         container.addClass('stardew-container');
 
-        const header = container.createEl("h4", { cls: 'stardew-header', text: "Stardew Valley Animals" });
+        const header = container.createEl("h4", { cls: 'stardew-header', text: "Stardew pets" });
 
         // Create the farm area (fills remaining space)
         const farm = container.createDiv({ cls: "stardew-farm" });
