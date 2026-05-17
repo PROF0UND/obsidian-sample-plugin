@@ -30,6 +30,9 @@ export default class StardewPetsPlugin extends Plugin {
             name: 'Open stardew farm',
             callback: async () => {
                 const leaf = this.app.workspace.getLeftLeaf(true);
+                if (!leaf) {
+                    return;
+                }
                 await leaf.setViewState({ type: VIEW_TYPE_STARDEW, active: true });
                 await this.app.workspace.revealLeaf(leaf);
             }

@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { PetDefs } from "./pet-defs";
 import { SpriteDefinition, SpriteEngine } from "./sprite-engine";
-import { PLUGIN_ID } from "./constants";
+import { resolveSpriteAsset } from "./sprite-assets";
 
 export const VIEW_TYPE_STARDEW = "stardew-view";
 
@@ -23,7 +23,7 @@ export class StardewView extends ItemView {
         return "paw-print"; // Or some icon, maybe "leaf" or custom
     }
 
-    onOpen() {
+    async onOpen() {
         const container = this.contentEl;
         container.empty();
         container.addClass('stardew-container');
@@ -33,7 +33,7 @@ export class StardewView extends ItemView {
         // Create the farm area (fills remaining space)
         const farm = container.createDiv({ cls: "stardew-farm" });
 
-        // Set background image from vault sprites folder
+        // Set bundled background image.
         const bgUrl = this.getPluginResourcePath('sprites/backgrounds/grass.png');
         farm.setCssProps({
             "background-image": `url('${bgUrl}')`,
@@ -268,7 +268,7 @@ export class StardewView extends ItemView {
         }
 
         if (!segments.length) {
-            this.startIdle(animalState);
+            this.startRest(animalState);
             return;
         }
 
@@ -315,7 +315,7 @@ export class StardewView extends ItemView {
         walkSegment(0);
     }
 
-    onClose() {
+    async onClose() {
         this.pauseAnimations();
         this.animals = [];
     }
@@ -362,7 +362,6 @@ export class StardewView extends ItemView {
     }
 
     private getPluginResourcePath(file: string) {
-        const pluginFile = `${this.app.vault.configDir}/plugins/${PLUGIN_ID}/${file}`;
-        return this.app.vault.adapter.getResourcePath(pluginFile);
+        return resolveSpriteAsset(file);
     }
 }
