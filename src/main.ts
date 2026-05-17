@@ -1,13 +1,7 @@
 import { Plugin } from 'obsidian';
-import { StardewView, VIEW_TYPE_STARDEW } from './stardew-view';
+import { Pet, StardewView, VIEW_TYPE_STARDEW } from './stardew-view';
 
 //Save
-type Pet = {
-    name: string;
-    specie: string;
-    color: string;
-}
-
 class Save {
     public pets: Array<Pet> = new Array<Pet>();
 }
@@ -21,7 +15,11 @@ export default class StardewPetsPlugin extends Plugin {
 
         // Register the Stardew view
         this.registerView(VIEW_TYPE_STARDEW, (leaf) => {
-            return new StardewView(leaf);
+            return new StardewView(leaf, {
+                getPets: () => save.pets,
+                addPet: async (pet) => this.addPet(pet),
+                removePet: async (id) => this.removePet(id),
+            });
         });
 
         // Command to open Stardew view
@@ -39,10 +37,6 @@ export default class StardewPetsPlugin extends Plugin {
 
         });
 
-        // Load existing pets when view is ready
-        this.app.workspace.onLayoutReady(() => {
-            this.loadPets();
-        });
     }
 
     onunload() {
@@ -55,7 +49,12 @@ export default class StardewPetsPlugin extends Plugin {
     async loadGame() {
         const data = await this.loadData();
         if (data && data.pets) {
-            save.pets = data.pets;
+            save.pets = data.pets.map((pet: Partial<Pet>) => ({
+                id: pet.id ?? this.createPetId(),
+                name: pet.name ?? "Pet",
+                specie: pet.specie ?? "cat",
+                color: pet.color ?? "",
+            }));
         }
     }
 
@@ -63,13 +62,23 @@ export default class StardewPetsPlugin extends Plugin {
         await this.saveData(save);
     }
 
-    loadPets() {
-        const view = this.getStardewView();
-        if (view) {
-            for (const pet of save.pets) {
-                view.spawnPet(pet.name, pet.specie, pet.color);
-            }
-        }
+    async addPet(pet: Omit<Pet, "id">) {
+        const savedPet = {
+            ...pet,
+            id: this.createPetId(),
+        };
+        save.pets.push(savedPet);
+        await this.saveGame();
+        this.getStardewView()?.spawnSavedPet(savedPet);
+    }
+
+    async removePet(id: string) {
+        save.pets = save.pets.filter((pet) => pet.id !== id);
+        await this.saveGame();
+    }
+
+    private createPetId() {
+        return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
 
     private getStardewView(): StardewView | null {

@@ -1,13 +1,28 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Modal, Notice, Setting, WorkspaceLeaf } from "obsidian";
 import { PetDefs } from "./pet-defs";
 import { SpriteDefinition, SpriteEngine } from "./sprite-engine";
 import { resolveSpriteAsset } from "./sprite-assets";
 
 export const VIEW_TYPE_STARDEW = "stardew-view";
 
+export type Pet = {
+    id: string;
+    name: string;
+    specie: string;
+    color: string;
+};
+
+type StardewViewActions = {
+    getPets: () => Pet[];
+    addPet: (pet: Omit<Pet, "id">) => Promise<void>;
+    removePet: (id: string) => Promise<void>;
+};
+
 export class StardewView extends ItemView {
     private animationsPaused = false;
-    constructor(leaf: WorkspaceLeaf) {
+    private removeMode = false;
+
+    constructor(leaf: WorkspaceLeaf, private actions: StardewViewActions) {
         super(leaf);
     }
 
@@ -28,7 +43,27 @@ export class StardewView extends ItemView {
         container.empty();
         container.addClass('stardew-container');
 
-        const header = container.createEl("h4", { cls: 'stardew-header', text: "Stardew pets" });
+        const header = container.createDiv({ cls: 'stardew-header' });
+        header.createEl("h4", { text: "Stardew pets" });
+        const controls = header.createDiv({ cls: "stardew-header-controls" });
+        const removeButton = controls.createEl("button", {
+            cls: "stardew-icon-button",
+            attr: { type: "button", "aria-label": "Remove pet" },
+            text: "-",
+        });
+        const addButton = controls.createEl("button", {
+            cls: "stardew-icon-button",
+            attr: { type: "button", "aria-label": "Add pet" },
+            text: "+",
+        });
+        this.registerDomEvent(addButton, "click", () => {
+            new AddPetModal(this.app, this.getPetSpecies(), (pet) => this.actions.addPet(pet)).open();
+        });
+        this.registerDomEvent(removeButton, "click", () => {
+            this.removeMode = !this.removeMode;
+            removeButton.toggleClass("is-active", this.removeMode);
+            new Notice(this.removeMode ? "Select a pet to remove." : "Remove mode off.");
+        });
 
         // Create the farm area (fills remaining space)
         const farm = container.createDiv({ cls: "stardew-farm" });
@@ -39,13 +74,7 @@ export class StardewView extends ItemView {
             "background-image": `url('${bgUrl}')`,
         });
 
-        // Add one of each animal
-        for (const specie of Object.keys(this.ANIMAL_CONFIG)) {
-            this.spawnPet(specie, specie);
-        }
-
-        // Start animations
-        this.startAnimations();
+        this.actions.getPets().forEach((pet) => this.spawnSavedPet(pet));
 
         this.registerDomEvent(window, 'blur', () => this.pauseAnimations());
         this.registerDomEvent(window, 'focus', () => this.resumeAnimations());
@@ -85,9 +114,10 @@ export class StardewView extends ItemView {
         walkRaf?: number;
         reactionTimer?: number;
         reactionEl?: HTMLElement;
+        petId?: string;
     }> = [];
 
-    addAnimal(container: Element, sprite: string, id: string) {
+    addAnimal(container: Element, sprite: string, id: string, petId?: string) {
         const config = this.ANIMAL_CONFIG[sprite];
         if (!config) {
             console.warn(`No sprite config found for ${sprite}`);
@@ -117,11 +147,16 @@ export class StardewView extends ItemView {
             y: startY,
             state: 'idle' as const,
             direction: 'down' as const,
+            petId,
         };
 
         this.animals.push(animalState);
         this.registerDomEvent(animal, "click", (event) => {
             event.stopPropagation();
+            if (this.removeMode && animalState.petId) {
+                void this.removeSavedPet(animalState);
+                return;
+            }
             this.startReaction(animalState, farmEl);
         });
 
@@ -139,15 +174,28 @@ export class StardewView extends ItemView {
     }
 
     spawnPet(name: string, specie: string, _color?: string) {
+        this.spawnSavedPet({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name,
+            specie,
+            color: _color ?? "",
+        });
+    }
+
+    spawnSavedPet(pet: Pet) {
         const farm = this.contentEl.querySelector(".stardew-farm");
         if (!farm) return;
-        const key = this.normalizeSpecieKey(specie);
+        const key = this.normalizeSpecieKey(pet.specie);
         if (!key) {
-            console.warn(`Unknown pet specie: ${specie}`);
+            console.warn(`Unknown pet specie: ${pet.specie}`);
             return;
         }
-        const id = `${key}-${name}-${Date.now()}`;
-        this.addAnimal(farm, key, id);
+        const id = `${key}-${pet.name}-${pet.id}`;
+        this.addAnimal(farm, key, id, pet.id);
+        if (!this.animationsPaused) {
+            const animal = this.animals[this.animals.length - 1];
+            if (animal) this.startRest(animal);
+        }
     }
 
     startAnimations() {
@@ -391,6 +439,20 @@ export class StardewView extends ItemView {
         return null;
     }
 
+    private getPetSpecies() {
+        return Object.keys(this.ANIMAL_CONFIG);
+    }
+
+    private async removeSavedPet(animalState: typeof this.animals[number]) {
+        if (!animalState.petId) return;
+        this.clearAnimalTimers(animalState);
+        this.removeReaction(animalState);
+        animalState.engine.stop();
+        animalState.el.remove();
+        this.animals = this.animals.filter((animal) => animal !== animalState);
+        await this.actions.removePet(animalState.petId);
+    }
+
     private updateAnimalPosition(animal: HTMLElement, x: number, y: number) {
         animal.setCssProps({
             left: `${x}px`,
@@ -417,5 +479,76 @@ export class StardewView extends ItemView {
 
     private getPluginResourcePath(file: string) {
         return resolveSpriteAsset(file);
+    }
+}
+
+class AddPetModal extends Modal {
+    private name = "";
+    private specie: string;
+
+    constructor(
+        app: StardewView["app"],
+        private species: string[],
+        private onSubmit: (pet: Omit<Pet, "id">) => Promise<void>,
+    ) {
+        super(app);
+        this.specie = species[0] ?? "cat";
+    }
+
+    onOpen() {
+        this.contentEl.empty();
+        this.contentEl.addClass("stardew-pet-modal");
+        this.titleEl.setText("Add pet");
+
+        new Setting(this.contentEl)
+            .setName("Name")
+            .addText((text) => {
+                text.setPlaceholder("Miso");
+                text.onChange((value) => {
+                    this.name = value;
+                });
+            });
+
+        new Setting(this.contentEl)
+            .setName("Pet")
+            .addDropdown((dropdown) => {
+                for (const specie of this.species) {
+                    dropdown.addOption(specie, this.formatSpeciesName(specie));
+                }
+                dropdown.setValue(this.specie);
+                dropdown.onChange((value) => {
+                    this.specie = value;
+                });
+            });
+
+        const actions = this.contentEl.createDiv({ cls: "stardew-modal-actions" });
+        actions.createEl("button", { text: "Cancel", attr: { type: "button" } }, (button) => {
+            button.addEventListener("click", () => this.close());
+        });
+        actions.createEl("button", {
+            cls: "mod-cta",
+            text: "Add pet",
+            attr: { type: "button" },
+        }, (button) => {
+            button.addEventListener("click", () => void this.submit());
+        });
+    }
+
+    private async submit() {
+        const name = this.name.trim();
+        if (!name) {
+            new Notice("Name your pet first.");
+            return;
+        }
+        await this.onSubmit({
+            name,
+            specie: this.specie,
+            color: "",
+        });
+        this.close();
+    }
+
+    private formatSpeciesName(specie: string) {
+        return specie.charAt(0).toUpperCase() + specie.slice(1);
     }
 }
