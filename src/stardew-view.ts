@@ -78,11 +78,13 @@ export class StardewView extends ItemView {
         engine: SpriteEngine;
         x: number;
         y: number;
-        state: 'idle' | 'walking';
+        state: 'idle' | 'walking' | 'reacting';
         direction: 'down' | 'left' | 'right' | 'up';
         idleTimer?: number;
         actionTimer?: number;
         walkRaf?: number;
+        reactionTimer?: number;
+        reactionEl?: HTMLElement;
     }> = [];
 
     addAnimal(container: Element, sprite: string, id: string) {
@@ -118,6 +120,10 @@ export class StardewView extends ItemView {
         };
 
         this.animals.push(animalState);
+        this.registerDomEvent(animal, "click", (event) => {
+            event.stopPropagation();
+            this.startReaction(animalState, farmEl);
+        });
 
         engine.load().then(() => {
             const size = engine.getFrameSize() * config.scale;
@@ -308,8 +314,43 @@ export class StardewView extends ItemView {
         walkSegment(0);
     }
 
+    private startReaction(animalState: typeof this.animals[number], farm: HTMLElement) {
+        if (this.animationsPaused) return;
+        this.clearAnimalTimers(animalState);
+        this.removeReaction(animalState);
+
+        animalState.state = "reacting";
+        animalState.engine.play("special");
+        animalState.reactionEl = this.createReactionBubble(farm, animalState);
+        animalState.el.setCssProps({
+            "z-index": `${Math.round(animalState.y) + 10000}`,
+        });
+
+        const specialDuration = animalState.engine.getAnimationDurationMs("special");
+        const reactionDuration = Math.max(1200, specialDuration ?? 1200);
+        animalState.reactionTimer = window.setTimeout(() => {
+            animalState.reactionTimer = undefined;
+            this.removeReaction(animalState);
+            this.updateAnimalPosition(animalState.el, animalState.x, animalState.y);
+            this.startRest(animalState);
+        }, reactionDuration);
+    }
+
+    private createReactionBubble(farm: HTMLElement, animalState: typeof this.animals[number]) {
+        const bubble = farm.createDiv({ cls: "stardew-reaction-bubble" });
+        bubble.createDiv({ cls: "stardew-pixel-heart" });
+        const size = animalState.engine.getFrameSize() * animalState.config.scale;
+        bubble.setCssProps({
+            left: `${animalState.x + size / 2}px`,
+            top: `${Math.max(0, animalState.y + size * -0.15)}px`,
+            "z-index": `${Math.round(animalState.y) + 10001}`,
+        });
+        return bubble;
+    }
+
     async onClose() {
         this.pauseAnimations();
+        this.animals.forEach(animal => this.removeReaction(animal));
         this.animals = [];
     }
 
@@ -317,13 +358,9 @@ export class StardewView extends ItemView {
         if (this.animationsPaused) return;
         this.animationsPaused = true;
         this.animals.forEach(animal => {
-            if (animal.idleTimer) window.clearTimeout(animal.idleTimer);
-            if (animal.actionTimer) window.clearTimeout(animal.actionTimer);
-            if (animal.walkRaf) cancelAnimationFrame(animal.walkRaf);
+            this.clearAnimalTimers(animal);
+            this.removeReaction(animal);
             animal.engine.stop();
-            animal.idleTimer = undefined;
-            animal.actionTimer = undefined;
-            animal.walkRaf = undefined;
         });
     }
 
@@ -360,6 +397,22 @@ export class StardewView extends ItemView {
             top: `${y}px`,
             "z-index": `${Math.round(y)}`,
         });
+    }
+
+    private clearAnimalTimers(animalState: typeof this.animals[number]) {
+        if (animalState.idleTimer) window.clearTimeout(animalState.idleTimer);
+        if (animalState.actionTimer) window.clearTimeout(animalState.actionTimer);
+        if (animalState.walkRaf) cancelAnimationFrame(animalState.walkRaf);
+        if (animalState.reactionTimer) window.clearTimeout(animalState.reactionTimer);
+        animalState.idleTimer = undefined;
+        animalState.actionTimer = undefined;
+        animalState.walkRaf = undefined;
+        animalState.reactionTimer = undefined;
+    }
+
+    private removeReaction(animalState: typeof this.animals[number]) {
+        animalState.reactionEl?.remove();
+        animalState.reactionEl = undefined;
     }
 
     private getPluginResourcePath(file: string) {

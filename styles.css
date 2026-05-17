@@ -44,3 +44,63 @@ If your plugin does not need CSS, delete this file.
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }
+
+.stardew-reaction-bubble {
+    position: absolute;
+    width: 16px;
+    height: 14px;
+    padding: 3px;
+    box-sizing: border-box;
+    background: var(--background-primary);
+    border: 1px solid var(--text-normal);
+    box-shadow: 1px 1px 0 var(--background-modifier-border);
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+}
+
+.stardew-reaction-bubble::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    bottom: -4px;
+    width: 4px;
+    height: 4px;
+    background: var(--background-primary);
+    border-right: 1px solid var(--text-normal);
+    border-bottom: 1px solid var(--text-normal);
+    transform: rotate(45deg);
+}
+
+.stardew-pixel-heart {
+    width: 8px;
+    height: 8px;
+    margin: 0 auto;
+    background: #e84855;
+    clip-path: polygon(
+        12.5% 0,
+        37.5% 0,
+        37.5% 12.5%,
+        50% 12.5%,
+        50% 0,
+        75% 0,
+        75% 12.5%,
+        87.5% 12.5%,
+        87.5% 50%,
+        75% 50%,
+        75% 62.5%,
+        62.5% 62.5%,
+        62.5% 75%,
+        50% 75%,
+        50% 87.5%,
+        37.5% 87.5%,
+        37.5% 75%,
+        25% 75%,
+        25% 62.5%,
+        12.5% 62.5%,
+        12.5% 50%,
+        0 50%,
+        0 12.5%,
+        12.5% 12.5%
+    );
+    image-rendering: pixelated;
+}
