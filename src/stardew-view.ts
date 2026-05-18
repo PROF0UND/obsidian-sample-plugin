@@ -1,4 +1,5 @@
 import { ItemView, Modal, Notice, Setting, WorkspaceLeaf } from "obsidian";
+import { DecorationLayer, DecorationPreset, DecorationPresets } from "../decoration";
 import { PetDefs } from "./pet-defs";
 import { SpriteDefinition, SpriteEngine } from "./sprite-engine";
 import { resolveSpriteAsset } from "./sprite-assets";
@@ -12,15 +13,38 @@ export type Pet = {
     color: string;
 };
 
+export type FarmDecoration = {
+    id: string;
+    presetKey: string;
+    x: number;
+    y: number;
+};
+
+type DecorationOption = {
+    key: string;
+    category: string;
+    preset: DecorationPreset;
+};
+
 type StardewViewActions = {
     getPets: () => Pet[];
+    getDecorations: () => FarmDecoration[];
     addPet: (pet: Omit<Pet, "id">) => Promise<void>;
     removePet: (id: string) => Promise<void>;
+    addDecoration: (decoration: Omit<FarmDecoration, "id">) => Promise<void>;
+    updateDecoration: (decoration: FarmDecoration) => Promise<void>;
+    removeDecoration: (id: string) => Promise<void>;
 };
 
 export class StardewView extends ItemView {
     private animationsPaused = false;
     private removeMode = false;
+    private placingDecoration?: {
+        presetKey: string;
+        preset: DecorationPreset;
+        previewEl: HTMLElement;
+    };
+    private readonly gridSize = 16;
 
     constructor(leaf: WorkspaceLeaf, private actions: StardewViewActions) {
         super(leaf);
@@ -51,6 +75,11 @@ export class StardewView extends ItemView {
             attr: { type: "button", "aria-label": "Remove pet" },
             text: "-",
         });
+        const decorationButton = controls.createEl("button", {
+            cls: "stardew-icon-button",
+            attr: { type: "button", "aria-label": "Add decoration" },
+            text: "▦",
+        });
         const addButton = controls.createEl("button", {
             cls: "stardew-icon-button",
             attr: { type: "button", "aria-label": "Add pet" },
@@ -62,7 +91,10 @@ export class StardewView extends ItemView {
         this.registerDomEvent(removeButton, "click", () => {
             this.removeMode = !this.removeMode;
             removeButton.toggleClass("is-active", this.removeMode);
-            new Notice(this.removeMode ? "Select a pet to remove." : "Remove mode off.");
+            new Notice(this.removeMode ? "Select a pet or decoration to remove." : "Remove mode off.");
+        });
+        this.registerDomEvent(decorationButton, "click", () => {
+            new AddDecorationModal(this.app, this.getDecorationOptions(), (option) => this.startDecorationPlacement(option)).open();
         });
 
         // Create the farm area (fills remaining space)
@@ -74,7 +106,19 @@ export class StardewView extends ItemView {
             "background-image": `url('${bgUrl}')`,
         });
 
+        this.actions.getDecorations().forEach((decoration) => this.spawnSavedDecoration(decoration));
         this.actions.getPets().forEach((pet) => this.spawnSavedPet(pet));
+
+        this.registerDomEvent(farm, "mousemove", (event) => this.moveDecorationPreview(event, farm));
+        this.registerDomEvent(farm, "click", (event) => {
+            if (!this.placingDecoration) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void this.placeDecoration(event, farm);
+        });
+        this.registerDomEvent(window, "keydown", (event) => {
+            if (event.key === "Escape") this.cancelDecorationPlacement();
+        });
 
         this.registerDomEvent(window, 'blur', () => this.pauseAnimations());
         this.registerDomEvent(window, 'focus', () => this.resumeAnimations());
@@ -115,6 +159,14 @@ export class StardewView extends ItemView {
         reactionTimer?: number;
         reactionEl?: HTMLElement;
         petId?: string;
+    }> = [];
+    private decorations: Array<{
+        el: HTMLElement;
+        id: string;
+        presetKey: string;
+        preset: DecorationPreset;
+        x: number;
+        y: number;
     }> = [];
 
     addAnimal(container: Element, sprite: string, id: string, petId?: string) {
@@ -171,6 +223,30 @@ export class StardewView extends ItemView {
             animalState.y = Math.max(0, Math.min(maxLoadedY, animalState.y));
             this.updateAnimalPosition(animal, animalState.x, animalState.y);
         }).catch((err) => console.error(err));
+    }
+
+    spawnSavedDecoration(decoration: FarmDecoration) {
+        const farm = this.contentEl.querySelector(".stardew-farm");
+        if (!farm) return;
+        const option = this.getDecorationOption(decoration.presetKey);
+        if (!option) return;
+        const decorEl = (farm as HTMLElement).createDiv({ cls: "stardew-decoration" });
+        this.applyDecorationSprite(decorEl, option.preset);
+        this.updateDecorationPosition(decorEl, decoration.x, decoration.y, option.preset);
+        const decorationState = {
+            el: decorEl,
+            id: decoration.id,
+            presetKey: decoration.presetKey,
+            preset: option.preset,
+            x: decoration.x,
+            y: decoration.y,
+        };
+        this.decorations.push(decorationState);
+        this.registerDomEvent(decorEl, "click", (event) => {
+            if (!this.removeMode) return;
+            event.stopPropagation();
+            void this.removeSavedDecoration(decorationState);
+        });
     }
 
     spawnPet(name: string, specie: string, _color?: string) {
@@ -400,6 +476,8 @@ export class StardewView extends ItemView {
         this.pauseAnimations();
         this.animals.forEach(animal => this.removeReaction(animal));
         this.animals = [];
+        this.decorations = [];
+        this.cancelDecorationPlacement();
     }
 
     private pauseAnimations() {
@@ -443,6 +521,108 @@ export class StardewView extends ItemView {
         return Object.keys(this.ANIMAL_CONFIG);
     }
 
+    private getDecorationOptions(): DecorationOption[] {
+        return Object.entries(DecorationPresets).flatMap(([category, presets]) => (
+            Object.entries(presets).map(([key, preset]) => ({ key, category, preset }))
+        ));
+    }
+
+    private getDecorationOption(presetKey: string) {
+        return this.getDecorationOptions().find((option) => option.key === presetKey) ?? null;
+    }
+
+    private startDecorationPlacement(option: DecorationOption) {
+        const farm = this.contentEl.querySelector(".stardew-farm") as HTMLElement | null;
+        if (!farm) return;
+        this.cancelDecorationPlacement();
+        const previewEl = farm.createDiv({ cls: "stardew-decoration stardew-decoration-preview" });
+        this.applyDecorationSprite(previewEl, option.preset);
+        this.placingDecoration = {
+            presetKey: option.key,
+            preset: option.preset,
+            previewEl,
+        };
+        this.setPetsHidden(true);
+        new Notice("Select a square to place the decoration.");
+    }
+
+    private moveDecorationPreview(event: MouseEvent, farm: HTMLElement) {
+        if (!this.placingDecoration) return;
+        const pos = this.getSnappedFarmPosition(event, farm, this.placingDecoration.preset);
+        this.updateDecorationPosition(this.placingDecoration.previewEl, pos.x, pos.y, this.placingDecoration.preset);
+    }
+
+    private async placeDecoration(event: MouseEvent, farm: HTMLElement) {
+        const placement = this.placingDecoration;
+        if (!placement) return;
+        const pos = this.getSnappedFarmPosition(event, farm, placement.preset);
+        const presetKey = placement.presetKey;
+        this.cancelDecorationPlacement();
+        await this.actions.addDecoration({
+            presetKey,
+            x: pos.x,
+            y: pos.y,
+        });
+    }
+
+    private cancelDecorationPlacement() {
+        this.placingDecoration?.previewEl.remove();
+        this.placingDecoration = undefined;
+        this.setPetsHidden(false);
+    }
+
+    private setPetsHidden(hidden: boolean) {
+        this.animals.forEach((animal) => {
+            animal.el.toggleClass("stardew-animal-hidden", hidden);
+        });
+    }
+
+    private getSnappedFarmPosition(event: MouseEvent, farm: HTMLElement, preset: DecorationPreset) {
+        const bounds = farm.getBoundingClientRect();
+        const scaleX = bounds.width / farm.clientWidth;
+        const scaleY = bounds.height / farm.clientHeight;
+        const rawX = (event.clientX - bounds.left) / scaleX;
+        const rawY = (event.clientY - bounds.top) / scaleY;
+        const maxX = Math.max(0, farm.clientWidth - preset.size.x);
+        const maxY = Math.max(0, farm.clientHeight - preset.size.y);
+        return {
+            x: this.clamp(this.snapToGrid(rawX), 0, this.floorToGrid(maxX)),
+            y: this.clamp(this.snapToGrid(rawY), 0, this.floorToGrid(maxY)),
+        };
+    }
+
+    private applyDecorationSprite(el: HTMLElement, preset: DecorationPreset) {
+        el.setCssProps({
+            width: `${preset.size.x}px`,
+            height: `${preset.size.y}px`,
+            "background-image": `url('${resolveSpriteAsset("sprites/decoration.png")}')`,
+            "background-position": `-${preset.spriteOffset.x}px -${preset.spriteOffset.y}px`,
+        });
+    }
+
+    private updateDecorationPosition(el: HTMLElement, x: number, y: number, preset: DecorationPreset) {
+        const zIndex = preset.sortingLayer === DecorationLayer.RUGS
+            ? 1
+            : Math.round(y + preset.size.y + (preset.sortingLayer ?? 0));
+        el.setCssProps({
+            left: `${x}px`,
+            top: `${y}px`,
+            "z-index": `${zIndex}`,
+        });
+    }
+
+    private snapToGrid(value: number) {
+        return Math.round(value / this.gridSize) * this.gridSize;
+    }
+
+    private floorToGrid(value: number) {
+        return Math.floor(value / this.gridSize) * this.gridSize;
+    }
+
+    private clamp(value: number, min: number, max: number) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private async removeSavedPet(animalState: typeof this.animals[number]) {
         if (!animalState.petId) return;
         this.clearAnimalTimers(animalState);
@@ -453,11 +633,17 @@ export class StardewView extends ItemView {
         await this.actions.removePet(animalState.petId);
     }
 
+    private async removeSavedDecoration(decorationState: typeof this.decorations[number]) {
+        decorationState.el.remove();
+        this.decorations = this.decorations.filter((decoration) => decoration !== decorationState);
+        await this.actions.removeDecoration(decorationState.id);
+    }
+
     private updateAnimalPosition(animal: HTMLElement, x: number, y: number) {
         animal.setCssProps({
             left: `${x}px`,
             top: `${y}px`,
-            "z-index": `${Math.round(y)}`,
+            "z-index": `${Math.round(y) + 2}`,
         });
     }
 
@@ -550,5 +736,42 @@ class AddPetModal extends Modal {
 
     private formatSpeciesName(specie: string) {
         return specie.charAt(0).toUpperCase() + specie.slice(1);
+    }
+}
+
+class AddDecorationModal extends Modal {
+    constructor(
+        app: StardewView["app"],
+        private options: DecorationOption[],
+        private onSelect: (option: DecorationOption) => void,
+    ) {
+        super(app);
+    }
+
+    onOpen() {
+        this.contentEl.empty();
+        this.contentEl.addClass("stardew-decoration-modal");
+        this.titleEl.setText("Add decoration");
+
+        const list = this.contentEl.createDiv({ cls: "stardew-decoration-list" });
+        for (const option of this.options) {
+            list.createEl("button", {
+                cls: "stardew-decoration-option",
+                attr: { type: "button" },
+            }, (button) => {
+                const preview = button.createDiv({ cls: "stardew-decoration-option-preview" });
+                preview.setCssProps({
+                    width: `${option.preset.size.x}px`,
+                    height: `${option.preset.size.y}px`,
+                    "background-image": `url('${resolveSpriteAsset("sprites/decoration.png")}')`,
+                    "background-position": `-${option.preset.spriteOffset.x}px -${option.preset.spriteOffset.y}px`,
+                });
+                button.createSpan({ text: option.preset.name });
+                button.addEventListener("click", () => {
+                    this.onSelect(option);
+                    this.close();
+                });
+            });
+        }
     }
 }

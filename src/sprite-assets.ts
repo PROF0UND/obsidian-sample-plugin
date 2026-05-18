@@ -7,6 +7,7 @@ import woodBrokenBackground from "../sprites/backgrounds/wood_broken.png";
 import woodDarkBackground from "../sprites/backgrounds/wood_dark.png";
 import woodLightBackground from "../sprites/backgrounds/wood_light.png";
 import woodOrangeBackground from "../sprites/backgrounds/wood_orange.png";
+import decorationSprites from "../sprites/decoration.png";
 import catPet from "../sprites/pets/cat.png";
 import chickenPet from "../sprites/pets/chicken.png";
 import cowPet from "../sprites/pets/cow.png";
@@ -40,6 +41,7 @@ const SPRITE_ASSETS: Record<string, string> = {
     "sprites/backgrounds/wood_dark.png": woodDarkBackground,
     "sprites/backgrounds/wood_light.png": woodLightBackground,
     "sprites/backgrounds/wood_orange.png": woodOrangeBackground,
+    "sprites/decoration.png": decorationSprites,
     "sprites/pets/cat.png": catPet,
     "sprites/pets/chicken.png": chickenPet,
     "sprites/pets/cow.png": cowPet,

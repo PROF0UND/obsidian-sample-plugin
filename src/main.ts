@@ -1,9 +1,10 @@
 import { Plugin } from 'obsidian';
-import { Pet, StardewView, VIEW_TYPE_STARDEW } from './stardew-view';
+import { FarmDecoration, Pet, StardewView, VIEW_TYPE_STARDEW } from './stardew-view';
 
 //Save
 class Save {
     public pets: Array<Pet> = new Array<Pet>();
+    public decorations: Array<FarmDecoration> = new Array<FarmDecoration>();
 }
 
 let save = new Save();
@@ -17,8 +18,12 @@ export default class StardewPetsPlugin extends Plugin {
         this.registerView(VIEW_TYPE_STARDEW, (leaf) => {
             return new StardewView(leaf, {
                 getPets: () => save.pets,
+                getDecorations: () => save.decorations,
                 addPet: async (pet) => this.addPet(pet),
                 removePet: async (id) => this.removePet(id),
+                addDecoration: async (decoration) => this.addDecoration(decoration),
+                updateDecoration: async (decoration) => this.updateDecoration(decoration),
+                removeDecoration: async (id) => this.removeDecoration(id),
             });
         });
 
@@ -56,6 +61,14 @@ export default class StardewPetsPlugin extends Plugin {
                 color: pet.color ?? "",
             }));
         }
+        if (data && data.decorations) {
+            save.decorations = data.decorations.map((decoration: Partial<FarmDecoration>) => ({
+                id: decoration.id ?? this.createPetId(),
+                presetKey: decoration.presetKey ?? "",
+                x: decoration.x ?? 0,
+                y: decoration.y ?? 0,
+            })).filter((decoration: FarmDecoration) => decoration.presetKey);
+        }
     }
 
     async saveGame() {
@@ -74,6 +87,28 @@ export default class StardewPetsPlugin extends Plugin {
 
     async removePet(id: string) {
         save.pets = save.pets.filter((pet) => pet.id !== id);
+        await this.saveGame();
+    }
+
+    async addDecoration(decoration: Omit<FarmDecoration, "id">) {
+        const savedDecoration = {
+            ...decoration,
+            id: this.createPetId(),
+        };
+        save.decorations.push(savedDecoration);
+        await this.saveGame();
+        this.getStardewView()?.spawnSavedDecoration(savedDecoration);
+    }
+
+    async updateDecoration(decoration: FarmDecoration) {
+        save.decorations = save.decorations.map((savedDecoration) => (
+            savedDecoration.id === decoration.id ? decoration : savedDecoration
+        ));
+        await this.saveGame();
+    }
+
+    async removeDecoration(id: string) {
+        save.decorations = save.decorations.filter((decoration) => decoration.id !== id);
         await this.saveGame();
     }
 
