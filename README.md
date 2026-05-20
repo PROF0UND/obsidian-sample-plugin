@@ -1,6 +1,6 @@
 # Stardew Pets Farm
 
-![Stardew pets](image.png)
+![Stardew pets](StardewValleyPetsBanner.jpg)
 
 Bring a tiny animated farm to your vault. Stardew Pets Farm adds a playful view where pixel pets wander around, react to clicks, and live alongside placeable pixel decorations while you work.
 
