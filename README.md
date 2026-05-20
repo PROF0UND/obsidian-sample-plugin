@@ -17,6 +17,21 @@ Inspired by [BOTPanzer](https://github.com/BOTPanzer/Stardew-Pets). Thank you so
 
 ![Stardew-valley-pets-on-screen](Stardew_trail.gif)
 
+## Adding Decorations
+
+1. Click the menu.
+2. Select a decoration of your choice.
+3. Place it anywhere!
+
+![Stardew-valley-decor-on-screen](decor.gif)
+
+## Removing Pets/Decoration
+
+1. Click the "-" button to enter remove mode.
+2. Click on the pet/decor you want to remove :'(
+3. Click the "-" button again to exit remove mode.
+
+
 ## Features
 
 - A dedicated Stardew Pets Farm view in your sidebar.
